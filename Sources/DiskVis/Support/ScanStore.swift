@@ -98,7 +98,7 @@ enum ScanStore {
 
         var entries: [DiffEntry] = []
         var seen = Set<String>()
-        currentRoot.walk { node in
+        currentRoot.walkIncludingCollapsed { node in
             guard !node.isDirectory, node.size >= minFileSize || oldFiles[node.url.path] != nil else { return }
             let path = node.url.path
             seen.insert(path)

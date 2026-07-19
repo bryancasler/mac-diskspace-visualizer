@@ -102,7 +102,10 @@ final class DiskScanner {
         let dirPath = node.url.path
         let names: [String]
         do {
-            names = try FileManager.default.contentsOfDirectory(atPath: dirPath)
+            // Sorted so traversal — and therefore hard-link winner selection
+            // below — is deterministic across scans of an unchanged tree,
+            // instead of depending on filesystem enumeration order.
+            names = try FileManager.default.contentsOfDirectory(atPath: dirPath).sorted()
         } catch {
             node.isInaccessible = true
             progress?.noteInaccessible()
@@ -163,6 +166,11 @@ final class DiskScanner {
                 size: restSize
             )
             synthetic.isSynthetic = true
+            // Preserve the collapsed originals as children (instead of
+            // discarding them) so scan-history diffing can still see them
+            // via walkIncludingCollapsed — UI traversal (walk) still treats
+            // this node as an opaque leaf since isDirectory is false.
+            synthetic.setChildren(Array(rest))
             kids = keep + [synthetic]
         }
 

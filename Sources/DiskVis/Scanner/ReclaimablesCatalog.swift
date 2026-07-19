@@ -126,9 +126,15 @@ enum ReclaimablesCatalog {
         ]
     }
 
-    /// Size every existing catalog path. Runs full (small) scans; call off-main.
+    /// Size every existing catalog path. When `root` (the current scan's
+    /// tree) already covers a path, reuses that live node instead of
+    /// re-scanning — so the returned node is part of the real tree and
+    /// trashing it propagates to the sunburst/treemap/file list instantly,
+    /// and sizing doesn't redundantly re-walk data the app already has.
+    /// Falls back to a standalone scan for paths outside the current root.
     static func measure(
         categories: [ReclaimableCategory] = standard(),
+        root: FileNode? = nil,
         cancel: CancelFlag? = nil
     ) -> [ReclaimableResult] {
         var results: [ReclaimableResult] = []
@@ -136,6 +142,10 @@ enum ReclaimablesCatalog {
             var nodes: [FileNode] = []
             for path in category.paths where FileManager.default.fileExists(atPath: path) {
                 if cancel?.isCancelled == true { return results }
+                if let live = root?.find(atPath: path) {
+                    nodes.append(live)
+                    continue
+                }
                 let scanner = DiskScanner(cancel: cancel)
                 if let node = try? scanner.scan(url: URL(fileURLWithPath: path)) {
                     nodes.append(node)

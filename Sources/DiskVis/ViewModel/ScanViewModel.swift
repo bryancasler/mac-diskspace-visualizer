@@ -56,15 +56,6 @@ final class ScanViewModel {
         selection = nil
         tableSelection = nil
         lastError = nil
-        let volumeKeys: Set<URLResourceKey> = [.isVolumeKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey]
-        if let values = try? url.resourceValues(forKeys: volumeKeys),
-           values.isVolume == true,
-           let total = values.volumeTotalCapacity,
-           let available = values.volumeAvailableCapacity {
-            volumeUsedBytes = Int64(total - available)
-        } else {
-            volumeUsedBytes = nil
-        }
         progress.reset()
         scannedItems = 0
         scannedBytes = 0
@@ -108,8 +99,22 @@ final class ScanViewModel {
         tick += 1
         duplicateGroups = nil
         diffBaseline = nil
+        // Old-tree FileNode identities are meaningless against a brand-new
+        // tree — DiskScanner builds fresh objects every scan.
+        collector = []
+        refreshVolumeUsedBytes()
         lastSavedSnapshot = try? ScanStore.save(root: node)
         refreshBaselines()
+    }
+
+    /// Re-reads the scan root's volume capacity (backs the "Files: X of Y
+    /// used" banner). Called after a fresh scan and after anything that
+    /// frees real disk space outside the file tree (deleting a Time Machine
+    /// snapshot), so that total doesn't go stale.
+    private func refreshVolumeUsedBytes() {
+        guard let root else { volumeUsedBytes = nil; return }
+        let rootPath = root.url.path
+        volumeUsedBytes = VolumeInfo.mounted().first { $0.url.path == rootPath }?.used
     }
 
     private func abortScan(error: Error) {
@@ -306,6 +311,19 @@ final class ScanViewModel {
         dupesLoading = false
     }
 
+    /// Drops a trashed node (or its descendants) from any duplicate group,
+    /// and the whole group once it's down to fewer than 2 real members —
+    /// otherwise the Duplicates pane keeps offering an already-deleted file.
+    private func pruneDuplicateGroups(removing node: FileNode) {
+        guard let groups = duplicateGroups else { return }
+        duplicateGroups = groups.compactMap { group in
+            let survivors = group.files.filter { !node.isSelfOrAncestor(of: $0) }
+            guard survivors.count > 1 else { return nil }
+            guard survivors.count != group.files.count else { return group }
+            return DuplicateGroup(size: group.size, files: survivors)
+        }
+    }
+
     // MARK: - Scan history / diff
 
     var availableBaselines: [URL] = []
@@ -362,8 +380,9 @@ final class ScanViewModel {
     func loadReclaimables() {
         guard !reclaimablesLoading else { return }
         reclaimablesLoading = true
+        let currentRoot = root
         Task.detached(priority: .userInitiated) { [vm = self] in
-            let results = ReclaimablesCatalog.measure()
+            let results = ReclaimablesCatalog.measure(root: currentRoot)
             let snaps = SnapshotManager.list()
             await MainActor.run {
                 vm.reclaimables = results
@@ -381,6 +400,7 @@ final class ScanViewModel {
             await MainActor.run {
                 vm.snapshotMessage = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 vm.snapshots = snaps
+                vm.refreshVolumeUsedBytes()
             }
         }
     }
@@ -420,7 +440,9 @@ final class ScanViewModel {
                 try FileManager.default.trashItem(at: node.url, resultingItemURL: nil)
                 reclaimedBytes += node.size
                 trashedAny = true
-                if selection === node {
+                // Ancestor-aware: trashing a folder orphans anything
+                // selected inside it too, not just an exact-match selection.
+                if let currentSelection = selection, node.isSelfOrAncestor(of: currentSelection) {
                     selection = nil
                     tableSelection = nil
                 }
@@ -429,6 +451,7 @@ final class ScanViewModel {
                     path = Array(path[..<index])
                 }
                 collector.removeAll { node.isSelfOrAncestor(of: $0) }
+                pruneDuplicateGroups(removing: node)
                 node.removeFromParent()
             } catch {
                 failures.append("\(node.name): \(error.localizedDescription)")

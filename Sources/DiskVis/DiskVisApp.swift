@@ -228,5 +228,85 @@ struct DiskVisApp: App {
                 exit(1)
             }
         }
+        // `DiskVis --selftest` asserts pure in-memory FileNode tree logic
+        // (no scanning, no disk I/O) — for mechanisms that don't need real
+        // files to verify, like the synthetic-node traversal used by
+        // scan-history diffing and the Reclaimables live-tree lookup.
+        if args.contains("--selftest") {
+            var failures = 0
+            func check(_ name: String, _ pass: Bool) {
+                print("\(pass ? "PASS" : "FAIL")\t\(name)")
+                if !pass { failures += 1 }
+            }
+
+            // Build: /fake/dir/{fileA, fileB, synthetic{fileC, fileD}} — the
+            // synthetic node reuses its enclosing directory's URL, and the
+            // files it collapsed keep their true original paths, exactly
+            // matching what DiskScanner actually constructs.
+            func node(_ path: String, dir: Bool, size: Int64) -> FileNode {
+                FileNode(name: (path as NSString).lastPathComponent, url: URL(fileURLWithPath: path), isDirectory: dir, size: size)
+            }
+            let root = node("/fake", dir: true, size: 0)
+            let subdir = node("/fake/dir", dir: true, size: 0)
+            let fileA = node("/fake/dir/fileA", dir: false, size: 10)
+            let fileB = node("/fake/dir/fileB", dir: false, size: 20)
+            let fileC = node("/fake/dir/fileC", dir: false, size: 5)
+            let fileD = node("/fake/dir/fileD", dir: false, size: 3)
+            // Matches DiskScanner: the synthetic node reuses its enclosing
+            // directory's URL but gets its own distinct display name.
+            let synthetic = FileNode(name: "(2 smaller items)", url: subdir.url, isDirectory: false, size: 8)
+            synthetic.isSynthetic = true
+            synthetic.setChildren([fileC, fileD])
+            subdir.setChildren([fileA, fileB, synthetic])
+            root.setChildren([subdir])
+
+            var walked: [String] = []
+            root.walk { walked.append($0.name) }
+            check("walk() skips synthetic node and its children",
+                  Set(walked) == ["dir", "fileA", "fileB"])
+
+            var walkedAll: [String] = []
+            root.walkIncludingCollapsed { walkedAll.append($0.name) }
+            check("walkIncludingCollapsed() reaches collapsed children, skips the synthetic node itself",
+                  Set(walkedAll) == ["dir", "fileA", "fileB", "fileC", "fileD"])
+
+            check("find(atPath:) locates a real descendant by exact path",
+                  root.find(atPath: fileA.url.path) === fileA)
+            check("find(atPath:) returns nil for a path outside the tree",
+                  root.find(atPath: "/fake/nonexistent") == nil)
+            check("find(atPath:) does not descend into synthetic nodes",
+                  root.find(atPath: fileC.url.path) == nil)
+
+            // Reclaimables live-tree reconnection: a category path inside
+            // the current scan root should resolve to the SAME object
+            // (===) DiskScanner already produced, not a fresh standalone
+            // scan — otherwise trashing it can't propagate back to the tree.
+            let tmp = FileManager.default.temporaryDirectory.appending(path: "diskvis-selftest-\(UUID().uuidString)")
+            do {
+                let cacheDir = tmp.appending(path: "cache")
+                try FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+                try Data(repeating: 0, count: 4096).write(to: cacheDir.appending(path: "blob.bin"))
+                let scanned = try DiskScanner().scan(url: tmp)
+                let inTreeCategory = ReclaimableCategory(
+                    id: "t1", title: "t", explanation: "", safety: .safe, paths: [cacheDir.path]
+                )
+                let outOfTreeCategory = ReclaimableCategory(
+                    id: "t2", title: "t", explanation: "", safety: .safe, paths: ["/private/etc"]
+                )
+                let inTreeResult = ReclaimablesCatalog.measure(categories: [inTreeCategory], root: scanned)
+                check("measure(root:) reuses the live tree node for a covered path",
+                      inTreeResult.first?.nodes.first === scanned.find(atPath: cacheDir.path))
+                let outOfTreeResult = ReclaimablesCatalog.measure(categories: [outOfTreeCategory], root: scanned)
+                check("measure(root:) falls back to a standalone scan outside the tree",
+                      outOfTreeResult.first?.nodes.first != nil)
+                try? FileManager.default.removeItem(at: tmp)
+            } catch {
+                check("Reclaimables reconnection fixture setup", false)
+                try? FileManager.default.removeItem(at: tmp)
+            }
+
+            print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
+            exit(failures == 0 ? 0 : 1)
+        }
     }
 }

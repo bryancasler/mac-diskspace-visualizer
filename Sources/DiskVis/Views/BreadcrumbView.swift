@@ -4,6 +4,11 @@ struct BreadcrumbView: View {
     @Environment(ScanViewModel.self) private var vm
 
     var body: some View {
+        // FileNode is a plain class, not @Observable — reading .size below
+        // needs an explicit dependency on tick to catch in-place mutations
+        // from deletions elsewhere in the tree (matches currentChildren,
+        // SunburstView, TreemapView).
+        let _ = vm.tick
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 ForEach(Array(vm.path.enumerated()), id: \.element.id) { index, node in

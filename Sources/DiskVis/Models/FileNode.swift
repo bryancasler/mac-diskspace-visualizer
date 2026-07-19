@@ -107,4 +107,35 @@ final class FileNode: Identifiable, @unchecked Sendable {
         }
         return false
     }
+
+    /// Finds the descendant (or self) at an exact path, if it's within this
+    /// node's scanned subtree. Used to reconnect a standalone scan (e.g.
+    /// Reclaimables sizing a cache directory) back to the live tree so
+    /// deletions propagate correctly instead of operating on an orphaned copy.
+    func find(atPath target: String) -> FileNode? {
+        if url.path == target { return self }
+        guard isDirectory, target.hasPrefix(url.path.hasSuffix("/") ? url.path : url.path + "/") else { return nil }
+        for child in children where !child.isSynthetic {
+            if let found = child.find(atPath: target) { return found }
+        }
+        return nil
+    }
+
+    /// Depth-first visit of every real descendant, including files
+    /// aggregated into a synthetic "(N smaller items)" placeholder (whose
+    /// own entry is never visited) — unlike `walk()`, which treats those
+    /// nodes as opaque leaves. Used where accuracy matters more than
+    /// UI-list brevity: scan-history snapshots and diffing, so a file
+    /// crossing the collapse threshold between two scans isn't reported as
+    /// falsely removed.
+    func walkIncludingCollapsed(_ visit: (FileNode) -> Void) {
+        for child in children {
+            if !child.isSynthetic {
+                visit(child)
+            }
+            if child.isDirectory || child.isSynthetic {
+                child.walkIncludingCollapsed(visit)
+            }
+        }
+    }
 }

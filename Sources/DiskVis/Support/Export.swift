@@ -15,7 +15,7 @@ enum Export {
     /// Files ≥ minSize plus all directories, largest first.
     static func flatten(_ root: FileNode, minFileSize: Int64 = 1_000_000) -> [FlatNode] {
         var nodes: [FlatNode] = [FlatNode(path: root.url.path, size: root.size, isDirectory: true, modified: 0)]
-        root.walk { node in
+        root.walkIncludingCollapsed { node in
             guard node.isDirectory || node.size >= minFileSize else { return }
             nodes.append(FlatNode(
                 path: node.url.path,

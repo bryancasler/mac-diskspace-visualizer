@@ -4,6 +4,9 @@ struct DetailBar: View {
     @Environment(ScanViewModel.self) private var vm
 
     var body: some View {
+        // See BreadcrumbView: FileNode.size mutates in place, so this view
+        // needs an explicit dependency on tick to catch deletions elsewhere.
+        let _ = vm.tick
         HStack(spacing: 12) {
             if let node = vm.selection {
                 NodeIcon(node: node)
