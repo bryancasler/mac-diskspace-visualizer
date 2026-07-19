@@ -4,6 +4,23 @@ A native macOS app for visualizing and exploring disk space — and freeing it u
 
 ![sunburst](docs/sunburst.png)
 
+DiskVis scans a folder or a whole volume and shows you exactly what's taking up
+the space, in the spirit of DaisyDisk and GrandPerspective. It's built with
+developer machines in mind: the reclaimables catalog knows about Xcode
+DerivedData, npm/pnpm/Yarn/Homebrew/Cargo caches, `node_modules`, LM Studio and
+Ollama models, and Docker's data volume — the stuff that quietly eats tens of
+gigabytes on any machine used for real work — alongside the usual duplicate
+finder, Time Machine snapshot manager, and scan-history diffing.
+
+## Screenshots
+
+|  |  |
+|---|---|
+| ![Welcome](docs/welcome.png) Pick a volume or folder — every mounted disk shows used/free at a glance. | ![Treemap](docs/treemap.png) Squarified treemap when you want to spot the single biggest file, not the structure. |
+| ![Duplicates](docs/duplicates.png) Size → partial hash → full SHA-256, hard links excluded. "Keep newest, collect the rest" per group. | ![Reclaimables](docs/reclaimables.png) One click sizes every known cache/build-artifact location, each with a SAFE/CAUTION badge and a plain-English reason. |
+
+More in [`docs/`](docs): the Collector basket in action ([collector.png](docs/collector.png)).
+
 ## Features
 
 - **Two visualizations** — an interactive sunburst (best for structure) and a squarified treemap (best for spotting big files), switchable in the toolbar. Click to drill in, click the sunburst's center to go back up, hover for details, right-click for actions.
@@ -17,7 +34,7 @@ A native macOS app for visualizing and exploring disk space — and freeing it u
 - **Scan history & diff** — every scan is saved automatically (compact, compressed, last 10 per root); the Changes pane shows what grew, shrank, appeared, or vanished since any earlier scan.
 - **Quick Look** (spacebar) before you delete; **Export** any scan as CSV/JSON from the File menu.
 - **Menu-bar watcher** — free-space readout, per-volume bars, a 30-day free-space sparkline, and an optional once-a-day low-space notification (threshold configurable in Settings).
-- **Free up space safely** — deletions go to the Trash, always behind a confirmation showing the exact size, with a session "Reclaimed" counter. The chart updates instantly without rescanning.
+- **Free up space safely** — every delete path (chart, tables, Collector, Reclaimables) goes through one shared confirmation showing the exact size, with a session "Reclaimed" counter. The chart updates instantly without rescanning.
 - **Honest accounting** — deduplicated allocated sizes (hard links once, `du`-exact), synthetic firmlink/alias trees skipped, and the gap between files and Disk-Utility "used" (snapshots, purgeable) stated instead of hidden.
 
 ## Build & run
@@ -42,6 +59,8 @@ DiskVis --save-snapshot <path>            # store a history snapshot
 DiskVis --diff <path>                     # diff against the latest snapshot
 DiskVis --reclaimables                    # measure the reclaimables catalog
 DiskVis --snapshots                       # list local TM snapshots
+DiskVis --selftest                        # in-memory tree-mechanism assertions, no disk I/O
+DiskVis --ui-audit <path> <out-dir>       # render every major screen to PNGs for visual review
 ```
 
 ## Accuracy

@@ -18,7 +18,7 @@ struct FileListView: View {
                         .foregroundStyle(node.isSynthetic ? .secondary : .primary)
                 }
             }
-            .width(min: 160, ideal: 260)
+            .width(min: 160, ideal: 260, max: 420)
 
             TableColumn("Size", value: \.size) { node in
                 Text(Format.bytes(node.size))

@@ -57,7 +57,7 @@ struct FilesPane: View {
                         }
                     }
                 }
-                .width(min: 200, ideal: 300)
+                .width(min: 200, ideal: 300, max: 420)
 
                 TableColumn("Size") { node in
                     Text(Format.bytes(node.size))

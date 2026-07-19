@@ -341,6 +341,14 @@ struct DiskVisApp: App {
                         window.setFrameOrigin(NSPoint(x: 40, y: 40))
                         window.orderFrontRegardless()
                         RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+                        // NOTE: Table/List column-width negotiation is known
+                        // to render incorrectly in this offscreen-window
+                        // technique (columns can clip well short of their
+                        // specified min-width) even after a long settle time
+                        // and with NSHostingController instead of
+                        // NSHostingView — treat Table-heavy captures from
+                        // this flag as unreliable for exact column layout;
+                        // charts and List-backed views are unaffected.
 
                         guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
                             throw CocoaError(.fileWriteUnknown)
@@ -382,25 +390,35 @@ struct DiskVisApp: App {
                         return ScanningView().environment(vm)
                     }
 
+                    // MainView reads its chart mode from @AppStorage, not the
+                    // view model — flip it directly so 04 actually captures
+                    // the treemap instead of a second sunburst.
+                    func setVizMode(_ mode: String) {
+                        UserDefaults.standard.set(mode, forKey: "vizMode")
+                    }
+
                     // 3. Main window — sunburst, Contents pane
-                    try snap("03-main-sunburst-contents", width: 1100, height: 720) {
+                    setVizMode("sunburst")
+                    try snap("03-main-sunburst-contents", width: 1400, height: 820) {
                         let vm = makeVM(paneMode: .contents)
                         vm.select(root.children.first)
                         return MainView().environment(vm)
                     }
 
                     // 4. Main window — treemap
-                    try snap("04-main-treemap", width: 1100, height: 720) {
+                    setVizMode("treemap")
+                    try snap("04-main-treemap", width: 1400, height: 820) {
                         MainView().environment(makeVM())
                     }
+                    setVizMode("sunburst")
 
                     // 5. Files pane (largest files)
-                    try snap("05-main-files-pane", width: 1100, height: 720) {
+                    try snap("05-main-files-pane", width: 1400, height: 820) {
                         MainView().environment(makeVM(paneMode: .files))
                     }
 
                     // 6. Duplicates pane, populated
-                    try snap("06-main-duplicates", width: 1100, height: 720) {
+                    try snap("06-main-duplicates", width: 1400, height: 820) {
                         let vm = makeVM(paneMode: .duplicates)
                         let files = root.collectFiles(limit: 6, minSize: 1)
                         if files.count >= 4 {
@@ -413,7 +431,7 @@ struct DiskVisApp: App {
                     }
 
                     // 7. Changes (diff) pane, populated
-                    try snap("07-main-changes", width: 1100, height: 720) {
+                    try snap("07-main-changes", width: 1400, height: 820) {
                         let vm = makeVM(paneMode: .changes)
                         let files = root.collectFiles(limit: 6, minSize: 1)
                         if files.count >= 3 {
