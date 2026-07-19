@@ -22,8 +22,8 @@ struct DiskVisApp: App {
                     NSApp.activate(ignoringOtherApps: true)
                 }
         }
-        // Sidebar is rigid at 640pt (see MainView); at this default size the
-        // chart gets ~740pt — roughly an even split, chart slightly favored.
+        // Sidebar opens at its 620pt ideal (see MainView); at this default
+        // size the chart gets ~760pt — an even split, chart slightly favored.
         .defaultSize(width: 1380, height: 720)
         .commands {
             CommandGroup(replacing: .importExport) {
@@ -345,12 +345,12 @@ struct DiskVisApp: App {
                         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
                         // Resolved: the "Table inside HSplitView drops its
                         // trailing column" symptom this harness surfaced was
-                        // a flexible-width sidebar letting HSplitView's first
-                        // layout pass propose an inflated width that the
-                        // Table committed its columns against; the fix is
-                        // the rigid sidebar frame in MainView (see the
-                        // comment there). This harness reproduced the real
-                        // bug faithfully — trust it for Table layout.
+                        // HSplitView's inflated first-pass width being
+                        // committed by Table's AppKit columns and never
+                        // re-tiled. Fixed for good by replacing the sidebar
+                        // Tables with custom Lists (FileListView/FilesPane)
+                        // that re-fit width every pass. This harness
+                        // reproduced the real bug faithfully — trust it.
 
                         guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
                             throw CocoaError(.fileWriteUnknown)

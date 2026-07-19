@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 
 /// Flat file table: largest files (with age filter) or search results.
+/// A custom List rather than a SwiftUI Table for the same reason as
+/// FileListView (see the comment there): List rows fit the pane's real
+/// width every pass, so nothing can fall off the right edge.
 struct FilesPane: View {
     @Environment(ScanViewModel.self) private var vm
 
@@ -43,35 +46,16 @@ struct FilesPane: View {
                     .padding(.bottom, 4)
             }
 
-            Table(rows, selection: $vm.tableSelection) {
-                TableColumn("Name") { node in
-                    HStack(spacing: 6) {
-                        NodeIcon(node: node)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(node.name).lineLimit(1)
-                            Text(location(of: node))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
-                }
-                .width(min: 200, ideal: 300, max: 420)
+            header
+            Divider()
 
-                TableColumn("Size") { node in
-                    Text(Format.bytes(node.size))
-                        .monospacedDigit()
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+            List(selection: $vm.tableSelection) {
+                ForEach(rows) { node in
+                    row(node)
                 }
-                .width(min: 70, ideal: 90, max: 120)
-
-                TableColumn("Modified") { node in
-                    Text(Format.date(node.modified))
-                        .foregroundStyle(.secondary)
-                }
-                .width(min: 80, ideal: 100, max: 140)
             }
+            .listStyle(.inset)
+            .alternatingRowBackgrounds(.enabled)
             .contextMenu(forSelectionType: FileNode.ID.self) { ids in
                 if let node = node(for: ids.first, in: rows) {
                     Button("Show in Folder") { vm.focus(on: node) }
@@ -92,6 +76,46 @@ struct FilesPane: View {
                 vm.quickLook(vm.selection)
                 return .handled
             }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: FileListView.fieldSpacing) {
+            Text("Name")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Size")
+                .frame(width: FileListView.sizeWidth, alignment: .trailing)
+            Text("Modified")
+                .frame(width: FileListView.modifiedWidth, alignment: .trailing)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 5)
+    }
+
+    private func row(_ node: FileNode) -> some View {
+        HStack(spacing: FileListView.fieldSpacing) {
+            NodeIcon(node: node)
+            // Flexible name block absorbs all slack (no Spacer — see
+            // FileListView.row for why).
+            VStack(alignment: .leading, spacing: 0) {
+                Text(node.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(location(of: node))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(Format.bytes(node.size))
+                .monospacedDigit()
+                .frame(width: FileListView.sizeWidth, alignment: .trailing)
+            Text(Format.date(node.modified))
+                .foregroundStyle(.secondary)
+                .frame(width: FileListView.modifiedWidth, alignment: .trailing)
         }
     }
 

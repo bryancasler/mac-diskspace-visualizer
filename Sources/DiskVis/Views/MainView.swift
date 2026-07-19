@@ -6,33 +6,33 @@ struct MainView: View {
     @State private var showCollector = false
     @State private var showReclaimables = false
     @AppStorage("vizMode") private var vizMode = "sunburst"
+    /// The sidebar's width is explicit, owned state — persisted across
+    /// launches and adjusted only by the drag handle below. HSplitView is
+    /// deliberately not used: its multi-pass width negotiation proposes
+    /// inflated/undersized widths to the panes on the way to settling
+    /// (the root cause behind the sidebar's cut-off-columns era), whereas
+    /// a plain HStack with a stored width has nothing to negotiate.
+    @AppStorage("sidebarWidth") private var sidebarWidth = 620.0
+    @State private var dragBaseWidth: Double?
+
+    private static let sidebarMin = 420.0
+    private static let sidebarMax = 860.0
+    private static let chartMin = 380.0
 
     var body: some View {
         @Bindable var vm = vm
         VStack(spacing: 0) {
             BreadcrumbView()
             Divider()
-            HSplitView {
-                sunburst
-                    .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
-                    .layoutPriority(1)
-                // RIGID width, deliberately. With a flexible sidebar
-                // (minWidth/idealWidth), HSplitView's first layout pass —
-                // before the divider position exists — proposes this pane
-                // everything left over after the chart's minWidth. The
-                // AppKit-backed Table commits its column widths against that
-                // inflated width, and when the divider then settles narrower,
-                // NSTableView never re-tiles columns downward: the table
-                // becomes horizontally scrollable and the trailing column
-                // sits permanently out of view. A rigid frame means every
-                // layout pass proposes the same width, so columns are
-                // committed against the true final width and all four fit.
-                // 640 = the Contents table's column ideals (590pt total) +
-                // ~30pt of Table row insets/intercell spacing + margin; the
-                // columns' flex ranges absorb the slack so there's no blank
-                // strip. The chart takes all remaining window width.
-                rightPane
-                    .frame(width: 640)
+            GeometryReader { geo in
+                let sidebar = effectiveSidebarWidth(available: geo.size.width)
+                HStack(spacing: 0) {
+                    sunburst
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    splitHandle
+                    rightPane
+                        .frame(width: sidebar)
+                }
             }
             Divider()
             DetailBar()
@@ -130,6 +130,43 @@ struct MainView: View {
         .onChange(of: vm.collector.count) { oldCount, newCount in
             if newCount > oldCount { showCollector = true }
         }
+    }
+
+    /// The stored width, clamped so the chart always keeps its minimum
+    /// share of whatever window width is actually available.
+    private func effectiveSidebarWidth(available: CGFloat) -> CGFloat {
+        let maxAllowed = max(Self.sidebarMin, Double(available) - Self.chartMin)
+        return CGFloat(min(max(sidebarWidth, Self.sidebarMin), min(Self.sidebarMax, maxAllowed)))
+    }
+
+    /// A thin visible divider with a wider invisible grab area; dragging it
+    /// adjusts the stored sidebar width directly.
+    private var splitHandle: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(width: 1)
+            .overlay(
+                Color.clear
+                    .frame(width: 10)
+                    .contentShape(Rectangle())
+                    .onHover { inside in
+                        if inside {
+                            NSCursor.resizeLeftRight.push()
+                        } else {
+                            NSCursor.pop()
+                        }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                            .onChanged { value in
+                                let base = dragBaseWidth ?? sidebarWidth
+                                dragBaseWidth = base
+                                // Sidebar is on the right: dragging left grows it.
+                                sidebarWidth = min(max(base - value.translation.width, Self.sidebarMin), Self.sidebarMax)
+                            }
+                            .onEnded { _ in dragBaseWidth = nil }
+                    )
+            )
     }
 
     private var pendingTrashIsPlural: Bool {
