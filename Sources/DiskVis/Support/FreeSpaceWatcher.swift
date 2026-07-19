@@ -64,7 +64,10 @@ final class FreeSpaceWatcher {
         let defaults = UserDefaults.standard
         guard defaults.bool(forKey: Self.alertsEnabledKey), Bundle.main.bundleIdentifier != nil else { return }
         let thresholdGB = defaults.double(forKey: Self.thresholdKey)
-        let threshold = Int64((thresholdGB > 0 ? thresholdGB : 20) * 1_000_000_000)
+        // Clamp before the multiply: an absurd user-entered value (e.g. a
+        // fat-fingered extra digit) must never overflow Int64 and crash.
+        let clampedGB = min(max(thresholdGB > 0 ? thresholdGB : 20, 0), 1_000_000)
+        let threshold = Int64(clampedGB * 1_000_000_000)
         guard startupFree > 0, startupFree < threshold else { return }
 
         let today = Self.dayFormatter.string(from: Date())

@@ -4,7 +4,6 @@ import SwiftUI
 /// Flat file table: largest files (with age filter) or search results.
 struct FilesPane: View {
     @Environment(ScanViewModel.self) private var vm
-    @State private var selectedID: FileNode.ID?
 
     var body: some View {
         @Bindable var vm = vm
@@ -44,7 +43,7 @@ struct FilesPane: View {
                     .padding(.bottom, 4)
             }
 
-            Table(rows, selection: $selectedID) {
+            Table(rows, selection: $vm.tableSelection) {
                 TableColumn("Name") { node in
                     HStack(spacing: 6) {
                         NodeIcon(node: node)
@@ -86,8 +85,8 @@ struct FilesPane: View {
             } primaryAction: { ids in
                 if let node = node(for: ids.first, in: rows) { vm.focus(on: node) }
             }
-            .onChange(of: selectedID) {
-                vm.selection = rows.first { $0.id == selectedID }
+            .onChange(of: vm.tableSelection) {
+                vm.syncSelectionFromTable()
             }
             .onKeyPress(.space) {
                 vm.quickLook(vm.selection)

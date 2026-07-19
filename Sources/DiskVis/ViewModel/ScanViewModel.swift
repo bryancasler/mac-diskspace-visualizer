@@ -175,8 +175,12 @@ final class ScanViewModel {
         tableSelection = node?.id
     }
 
+    /// Resolves `selection` from `tableSelection` against whichever row set
+    /// the current pane is showing — Contents and Files each maintain their
+    /// own row list, but share the same underlying selection state.
     func syncSelectionFromTable() {
-        selection = currentChildren.first { $0.id == tableSelection }
+        let rows = paneMode == .files ? filesPaneRows : currentChildren
+        selection = rows.first { $0.id == tableSelection }
     }
 
     // MARK: - Right pane modes
@@ -213,7 +217,15 @@ final class ScanViewModel {
         }
     }
 
-    var paneMode: PaneMode = .contents
+    var paneMode: PaneMode = .contents {
+        didSet {
+            // A stale selection from one pane's row list must never carry
+            // over and accidentally resolve against an unrelated row here.
+            guard oldValue != paneMode else { return }
+            selection = nil
+            tableSelection = nil
+        }
+    }
     var filesScope: FilesScope = .entireScan
     var ageFilter: AgeFilter = .any
     var searchQuery = ""

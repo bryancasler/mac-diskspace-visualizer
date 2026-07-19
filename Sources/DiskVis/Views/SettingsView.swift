@@ -23,6 +23,9 @@ struct SettingsView: View {
                         TextField("GB", value: $thresholdGB, format: .number)
                             .frame(width: 60)
                             .multilineTextAlignment(.trailing)
+                            .onChange(of: thresholdGB) {
+                                thresholdGB = min(max(thresholdGB, 0), 100_000)
+                            }
                         Text("GB free")
                             .foregroundStyle(.secondary)
                     }
