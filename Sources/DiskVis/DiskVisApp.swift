@@ -22,7 +22,9 @@ struct DiskVisApp: App {
                     NSApp.activate(ignoringOtherApps: true)
                 }
         }
-        .defaultSize(width: 1100, height: 720)
+        // Width grew alongside MainView's sidebar idealWidth bump (440→720)
+        // so the chart doesn't lose room to the wider default sidebar.
+        .defaultSize(width: 1380, height: 720)
         .commands {
             CommandGroup(replacing: .importExport) {
                 Button("Export Scan as CSV…") {
@@ -340,15 +342,29 @@ struct DiskVisApp: App {
                         window.contentView = hosting
                         window.setFrameOrigin(NSPoint(x: 40, y: 40))
                         window.orderFrontRegardless()
-                        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
-                        // NOTE: Table/List column-width negotiation is known
-                        // to render incorrectly in this offscreen-window
-                        // technique (columns can clip well short of their
-                        // specified min-width) even after a long settle time
-                        // and with NSHostingController instead of
-                        // NSHostingView — treat Table-heavy captures from
-                        // this flag as unreliable for exact column layout;
-                        // charts and List-backed views are unaffected.
+                        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+                        // HSplitView (NSSplitView-backed) can under-commit a
+                        // child's width until an actual resize event fires;
+                        // nudge the window to force it to recompute.
+                        var nudged = window.frame
+                        nudged.size.width -= 1
+                        window.setFrame(nudged, display: true)
+                        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+                        nudged.size.width += 1
+                        window.setFrame(nudged, display: true)
+                        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+                        // NOTE (investigated, unresolved): a Table with 4
+                        // columns rendered standalone shows all 4 correctly
+                        // in this harness, but the identical Table inside
+                        // MainView's HSplitView consistently drops the last
+                        // column (Modified) regardless of pane width, settle
+                        // time, or the resize nudge above. Isolates cleanly
+                        // to "Table nested in HSplitView" — not confirmed
+                        // whether this reproduces in the real, normally
+                        // launched app (this harness has documented Table
+                        // rendering quirks of its own). Don't trust a
+                        // MainView Table capture's column count from this
+                        // flag without live verification.
 
                         guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
                             throw CocoaError(.fileWriteUnknown)
@@ -399,7 +415,7 @@ struct DiskVisApp: App {
 
                     // 3. Main window — sunburst, Contents pane
                     setVizMode("sunburst")
-                    try snap("03-main-sunburst-contents", width: 1400, height: 820) {
+                    try snap("03-main-sunburst-contents", width: 1380, height: 720) {
                         let vm = makeVM(paneMode: .contents)
                         vm.select(root.children.first)
                         return MainView().environment(vm)

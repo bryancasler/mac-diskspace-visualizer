@@ -16,8 +16,16 @@ struct MainView: View {
                 sunburst
                     .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
                     .layoutPriority(1)
+                // Sized so the Contents table's four columns (up to 590pt at
+                // their ideal widths, 400pt at minimum — see
+                // FileListView's TableColumns) all stay visible on initial
+                // load: Table drops trailing columns entirely rather than
+                // scrolling to them when the pane is too narrow, so the
+                // buffer over the raw column sum has to be generous, not
+                // just enough to avoid a scrollbar. Wider than that would
+                // just steal room from the chart for no benefit.
                 rightPane
-                    .frame(minWidth: 340, idealWidth: 440)
+                    .frame(minWidth: 480, idealWidth: 720)
             }
             Divider()
             DetailBar()

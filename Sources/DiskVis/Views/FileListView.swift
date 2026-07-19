@@ -30,7 +30,7 @@ struct FileListView: View {
             TableColumn("Share", value: \.size) { node in
                 ShareBar(fraction: shareFraction(of: node))
             }
-            .width(min: 90, ideal: 140)
+            .width(min: 90, ideal: 140, max: 180)
 
             TableColumn("Modified", value: \.modified) { node in
                 Text(Format.date(node.modified))
