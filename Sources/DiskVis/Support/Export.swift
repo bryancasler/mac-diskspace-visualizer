@@ -42,23 +42,32 @@ enum Export {
         return out
     }
 
+    /// Only the save-panel interaction needs the main actor; the tree walk,
+    /// encoding, and disk write are dispatched to a background task so a
+    /// large scan's export doesn't freeze the UI.
     @MainActor
     static func save(root: FileNode, asCSV: Bool) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [asCSV ? .commaSeparatedText : .json]
         panel.nameFieldStringValue = "DiskVis-\(root.name).\(asCSV ? "csv" : "json")"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let nodes = flatten(root)
-        do {
-            if asCSV {
-                try csv(nodes).write(to: url, atomically: true, encoding: .utf8)
-            } else {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                try encoder.encode(nodes).write(to: url)
+        Task.detached(priority: .userInitiated) {
+            do {
+                try write(root: root, to: url, asCSV: asCSV)
+            } catch {
+                await MainActor.run { _ = NSAlert(error: error).runModal() }
             }
-        } catch {
-            NSAlert(error: error).runModal()
+        }
+    }
+
+    private static func write(root: FileNode, to url: URL, asCSV: Bool) throws {
+        let nodes = flatten(root)
+        if asCSV {
+            try csv(nodes).write(to: url, atomically: true, encoding: .utf8)
+        } else {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(nodes).write(to: url)
         }
     }
 }

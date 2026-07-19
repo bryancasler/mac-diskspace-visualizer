@@ -80,14 +80,19 @@ final class ScanViewModel {
             let scanner = DiskScanner(progress: box, cancel: flag)
             do {
                 let node = try scanner.scan(url: url)
-                await MainActor.run { vm.finishScan(with: node) }
+                // Save the scan-history snapshot off the main actor: the
+                // tree walk, JSON encode, zlib compress, and disk write are
+                // all synchronous I/O that would otherwise block the main
+                // thread right as the scan appears to finish.
+                let snapshot = try? ScanStore.save(root: node)
+                await MainActor.run { vm.finishScan(with: node, snapshot: snapshot) }
             } catch {
                 await MainActor.run { vm.abortScan(error: error) }
             }
         }
     }
 
-    private func finishScan(with node: FileNode) {
+    private func finishScan(with node: FileNode, snapshot: URL?) {
         stopProgressTimer()
         scanDuration = scanStart.map { Date().timeIntervalSince($0) } ?? 0
         let snap = progress.snapshot
@@ -103,7 +108,7 @@ final class ScanViewModel {
         // tree — DiskScanner builds fresh objects every scan.
         collector = []
         refreshVolumeUsedBytes()
-        lastSavedSnapshot = try? ScanStore.save(root: node)
+        lastSavedSnapshot = snapshot
         refreshBaselines()
     }
 
