@@ -3,7 +3,6 @@ import SwiftUI
 /// Trailing inspector: staging basket for items to delete in one action.
 struct CollectorView: View {
     @Environment(ScanViewModel.self) private var vm
-    @State private var confirmingEmpty = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -79,7 +78,7 @@ struct CollectorView: View {
                     }
                     .font(.callout)
                     Button(role: .destructive) {
-                        confirmingEmpty = true
+                        vm.requestTrash(vm.collector)
                     } label: {
                         Label("Move All to Trash…", systemImage: "trash")
                             .frame(maxWidth: .infinity)
@@ -88,18 +87,6 @@ struct CollectorView: View {
                 }
                 .padding(10)
             }
-        }
-        .confirmationDialog(
-            "Move \(vm.collector.count) items to the Trash?",
-            isPresented: $confirmingEmpty,
-            titleVisibility: .visible
-        ) {
-            Button("Move to Trash (frees \(Format.bytes(vm.collectorTotal)))", role: .destructive) {
-                vm.emptyCollector()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Everything can be restored from the Trash until you empty it.")
         }
     }
 }

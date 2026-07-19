@@ -27,6 +27,26 @@ struct MainView: View {
             if !vm.searchQuery.isEmpty { vm.paneMode = .files }
         }
         .quickLookPreview($vm.previewURL)
+        .confirmationDialog(
+            trashTitle,
+            isPresented: Binding(
+                get: { vm.pendingTrash != nil },
+                set: { if !$0 { vm.pendingTrash = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Move to Trash (frees \(Format.bytes(pendingTrashTotal)))", role: .destructive) {
+                if let nodes = vm.pendingTrash { vm.trash(nodes) }
+                vm.pendingTrash = nil
+                vm.pendingTrashWarning = nil
+            }
+            Button("Cancel", role: .cancel) {
+                vm.pendingTrash = nil
+                vm.pendingTrashWarning = nil
+            }
+        } message: {
+            Text(vm.pendingTrashWarning ?? "You can restore \(pendingTrashIsPlural ? "these" : "it") from the Trash until you empty it.")
+        }
         .sheet(isPresented: $showReclaimables) {
             ReclaimablesView()
         }
@@ -97,6 +117,22 @@ struct MainView: View {
         }
     }
 
+    private var pendingTrashIsPlural: Bool {
+        (vm.pendingTrash?.count ?? 0) != 1
+    }
+
+    private var trashTitle: String {
+        guard let nodes = vm.pendingTrash else { return "" }
+        if let only = nodes.first, nodes.count == 1 {
+            return "Move \"\(only.name)\" to the Trash?"
+        }
+        return "Move \(nodes.count) items to the Trash?"
+    }
+
+    private var pendingTrashTotal: Int64 {
+        vm.pendingTrash?.reduce(0) { $0 + $1.size } ?? 0
+    }
+
     @ViewBuilder
     private var rightPane: some View {
         switch vm.paneMode {
@@ -119,7 +155,7 @@ struct MainView: View {
                         onDrill: { vm.drill(into: $0) },
                         onUp: { vm.goUp() },
                         onCollect: { vm.addToCollector($0) },
-                        onTrash: { vm.trash([$0]) },
+                        onTrash: { vm.requestTrash([$0]) },
                         onReveal: { vm.reveal($0) }
                     )
                     .padding(8)
@@ -132,7 +168,7 @@ struct MainView: View {
                         onDrill: { vm.drill(into: $0) },
                         onUp: { vm.goUp() },
                         onCollect: { vm.addToCollector($0) },
-                        onTrash: { vm.trash([$0]) },
+                        onTrash: { vm.requestTrash([$0]) },
                         onReveal: { vm.reveal($0) }
                     )
                     .padding(8)

@@ -5,7 +5,6 @@ import SwiftUI
 struct ReclaimablesView: View {
     @Environment(ScanViewModel.self) private var vm
     @Environment(\.dismiss) private var dismiss
-    @State private var confirmingTrash: ReclaimableResult?
     @State private var confirmingSnapshot: TMSnapshot?
 
     var body: some View {
@@ -50,22 +49,11 @@ struct ReclaimablesView: View {
         }
         .frame(width: 720, height: 520)
         .onAppear { refresh() }
-        .confirmationDialog(
-            "Move “\(confirmingTrash?.category.title ?? "")” to the Trash?",
-            isPresented: Binding(get: { confirmingTrash != nil }, set: { if !$0 { confirmingTrash = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Move to Trash (frees \(Format.bytes(confirmingTrash?.totalSize ?? 0)))", role: .destructive) {
-                if let result = confirmingTrash {
-                    vm.trash(result.nodes)
-                    refresh()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(confirmingTrash?.category.safety == .caution
-                 ? "Read the description first — this one isn't just a cache. Restorable from the Trash until you empty it."
-                 : "Restorable from the Trash until you empty it.")
+        .onChange(of: vm.pendingTrash != nil) { wasPending, isPending in
+            // Refresh after the shared trash confirmation (mounted in
+            // MainView) resolves, whether confirmed or cancelled, so a
+            // trashed category disappears/shrinks in this sheet.
+            if wasPending && !isPending { refresh() }
         }
         .confirmationDialog(
             "Delete snapshot \(confirmingSnapshot?.deletableDate ?? "")?",
@@ -143,7 +131,12 @@ struct ReclaimablesView: View {
                     }
                     .help("Add to Collector")
                     Button(role: .destructive) {
-                        confirmingTrash = result
+                        vm.requestTrash(
+                            result.nodes,
+                            warning: result.category.safety == .caution
+                                ? "Read the description first — this one isn't just a cache. Restorable from the Trash until you empty it."
+                                : nil
+                        )
                     } label: {
                         Image(systemName: "trash")
                     }

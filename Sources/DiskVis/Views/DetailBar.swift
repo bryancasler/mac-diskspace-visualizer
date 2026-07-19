@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DetailBar: View {
     @Environment(ScanViewModel.self) private var vm
-    @State private var confirmingTrash = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -27,7 +26,7 @@ struct DetailBar: View {
                         .keyboardShortcut("k", modifiers: .command)
                         .disabled(vm.isInCollector(node))
                         .help("Add to the Collector basket (⌘K)")
-                    Button("Move to Trash", role: .destructive) { confirmingTrash = true }
+                    Button("Move to Trash", role: .destructive) { vm.requestTrash([node]) }
                         .keyboardShortcut(.delete, modifiers: .command)
                 }
             } else {
@@ -70,17 +69,5 @@ struct DetailBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.bar)
-        .confirmationDialog(
-            "Move \"\(vm.selection?.name ?? "")\" to the Trash?",
-            isPresented: $confirmingTrash,
-            titleVisibility: .visible
-        ) {
-            Button("Move to Trash (frees \(Format.bytes(vm.selection?.size ?? 0)))", role: .destructive) {
-                if let node = vm.selection { vm.moveToTrash(node) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("You can restore it from the Trash until you empty it.")
-        }
     }
 }

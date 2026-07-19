@@ -395,6 +395,21 @@ final class ScanViewModel {
         trash([node])
     }
 
+    /// Nodes awaiting user confirmation before being moved to the Trash. One
+    /// confirmationDialog, mounted once in MainView, resolves this for every
+    /// delete entry point in the app so none of them can skip confirmation.
+    var pendingTrash: [FileNode]?
+    /// Extra warning for the shared dialog (e.g. a caution-tier Reclaimables
+    /// category isn't just a cache) — nil shows the generic message.
+    var pendingTrashWarning: String?
+
+    func requestTrash(_ nodes: [FileNode], warning: String? = nil) {
+        let real = nodes.filter { !$0.isSynthetic }
+        guard !real.isEmpty else { return }
+        pendingTrash = real
+        pendingTrashWarning = warning
+    }
+
     /// Move any number of nodes to the Trash; updates the tree, the reclaimed
     /// counter, and the collector, and reports per-item failures.
     func trash(_ nodes: [FileNode]) {
@@ -445,11 +460,5 @@ final class ScanViewModel {
 
     func removeFromCollector(_ node: FileNode) {
         collector.removeAll { $0 === node }
-    }
-
-    /// Trash everything in the collector. Successfully trashed items are
-    /// removed by `trash`; failed ones stay in the basket.
-    func emptyCollector() {
-        trash(collector)
     }
 }

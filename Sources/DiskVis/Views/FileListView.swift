@@ -49,7 +49,7 @@ struct FileListView: View {
                     Divider()
                     Button("Add to Collector") { vm.addToCollector(node) }
                         .disabled(vm.isInCollector(node))
-                    Button("Move to Trash", role: .destructive) { vm.trash([node]) }
+                    Button("Move to Trash", role: .destructive) { vm.requestTrash([node]) }
                 }
             }
         } primaryAction: { ids in
