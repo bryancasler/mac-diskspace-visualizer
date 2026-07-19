@@ -22,8 +22,8 @@ struct DiskVisApp: App {
                     NSApp.activate(ignoringOtherApps: true)
                 }
         }
-        // Width grew alongside MainView's sidebar idealWidth bump (440→720)
-        // so the chart doesn't lose room to the wider default sidebar.
+        // Sidebar is rigid at 640pt (see MainView); at this default size the
+        // chart gets ~740pt — roughly an even split, chart slightly favored.
         .defaultSize(width: 1380, height: 720)
         .commands {
             CommandGroup(replacing: .importExport) {
@@ -343,28 +343,14 @@ struct DiskVisApp: App {
                         window.setFrameOrigin(NSPoint(x: 40, y: 40))
                         window.orderFrontRegardless()
                         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
-                        // HSplitView (NSSplitView-backed) can under-commit a
-                        // child's width until an actual resize event fires;
-                        // nudge the window to force it to recompute.
-                        var nudged = window.frame
-                        nudged.size.width -= 1
-                        window.setFrame(nudged, display: true)
-                        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
-                        nudged.size.width += 1
-                        window.setFrame(nudged, display: true)
-                        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
-                        // NOTE (investigated, unresolved): a Table with 4
-                        // columns rendered standalone shows all 4 correctly
-                        // in this harness, but the identical Table inside
-                        // MainView's HSplitView consistently drops the last
-                        // column (Modified) regardless of pane width, settle
-                        // time, or the resize nudge above. Isolates cleanly
-                        // to "Table nested in HSplitView" — not confirmed
-                        // whether this reproduces in the real, normally
-                        // launched app (this harness has documented Table
-                        // rendering quirks of its own). Don't trust a
-                        // MainView Table capture's column count from this
-                        // flag without live verification.
+                        // Resolved: the "Table inside HSplitView drops its
+                        // trailing column" symptom this harness surfaced was
+                        // a flexible-width sidebar letting HSplitView's first
+                        // layout pass propose an inflated width that the
+                        // Table committed its columns against; the fix is
+                        // the rigid sidebar frame in MainView (see the
+                        // comment there). This harness reproduced the real
+                        // bug faithfully — trust it for Table layout.
 
                         guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
                             throw CocoaError(.fileWriteUnknown)

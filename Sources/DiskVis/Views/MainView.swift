@@ -16,16 +16,23 @@ struct MainView: View {
                 sunburst
                     .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
                     .layoutPriority(1)
-                // Sized so the Contents table's four columns (up to 590pt at
-                // their ideal widths, 400pt at minimum — see
-                // FileListView's TableColumns) all stay visible on initial
-                // load: Table drops trailing columns entirely rather than
-                // scrolling to them when the pane is too narrow, so the
-                // buffer over the raw column sum has to be generous, not
-                // just enough to avoid a scrollbar. Wider than that would
-                // just steal room from the chart for no benefit.
+                // RIGID width, deliberately. With a flexible sidebar
+                // (minWidth/idealWidth), HSplitView's first layout pass —
+                // before the divider position exists — proposes this pane
+                // everything left over after the chart's minWidth. The
+                // AppKit-backed Table commits its column widths against that
+                // inflated width, and when the divider then settles narrower,
+                // NSTableView never re-tiles columns downward: the table
+                // becomes horizontally scrollable and the trailing column
+                // sits permanently out of view. A rigid frame means every
+                // layout pass proposes the same width, so columns are
+                // committed against the true final width and all four fit.
+                // 640 = the Contents table's column ideals (590pt total) +
+                // ~30pt of Table row insets/intercell spacing + margin; the
+                // columns' flex ranges absorb the slack so there's no blank
+                // strip. The chart takes all remaining window width.
                 rightPane
-                    .frame(minWidth: 480, idealWidth: 720)
+                    .frame(width: 640)
             }
             Divider()
             DetailBar()
