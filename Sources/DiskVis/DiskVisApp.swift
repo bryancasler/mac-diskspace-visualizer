@@ -308,5 +308,164 @@ struct DiskVisApp: App {
             print(failures == 0 ? "ALL PASS" : "\(failures) FAILED")
             exit(failures == 0 ? 0 : 1)
         }
+        // `DiskVis --ui-audit <fixture> <out-dir>` scans <fixture> and
+        // renders every major screen offscreen (populated with realistic
+        // state) to PNGs in <out-dir> — for visual UI/UX review without
+        // needing interactive access to the running app.
+        if let flagIndex = args.firstIndex(of: "--ui-audit"), args.count > flagIndex + 2 {
+            let fixture = URL(fileURLWithPath: args[flagIndex + 1])
+            let outDir = URL(fileURLWithPath: args[flagIndex + 2])
+            do {
+                try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+                let root = try DiskScanner().scan(url: fixture)
+                try MainActor.assumeIsolated {
+                    @MainActor
+                    // Table/List/Form are AppKit-hosted and don't rasterize
+                    // via plain ImageRenderer with no real window behind
+                    // them (renders as a placeholder glyph) — host in an
+                    // actual NSWindow and capture via cacheDisplay instead.
+                    func snap<V: View>(_ name: String, width: CGFloat, height: CGFloat, @ViewBuilder _ content: () -> V) throws {
+                        let view = content()
+                            .frame(width: width, height: height)
+                            .background(Color(nsColor: .windowBackgroundColor))
+                        let hosting = NSHostingView(rootView: view)
+                        hosting.frame = NSRect(x: 0, y: 0, width: width, height: height)
+
+                        let window = NSWindow(
+                            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+                            styleMask: [.titled, .borderless],
+                            backing: .buffered,
+                            defer: false
+                        )
+                        window.contentView = hosting
+                        window.setFrameOrigin(NSPoint(x: 40, y: 40))
+                        window.orderFrontRegardless()
+                        RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+
+                        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
+                            throw CocoaError(.fileWriteUnknown)
+                        }
+                        rep.size = hosting.bounds.size
+                        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+                        guard let png = rep.representation(using: .png, properties: [:]) else {
+                            throw CocoaError(.fileWriteUnknown)
+                        }
+                        try png.write(to: outDir.appending(path: "\(name).png"))
+                        window.close()
+                        print("wrote \(name).png")
+                    }
+
+                    @MainActor
+                    func makeVM(paneMode: ScanViewModel.PaneMode = .contents) -> ScanViewModel {
+                        let vm = ScanViewModel()
+                        vm.root = root
+                        vm.path = [root]
+                        vm.phase = .done
+                        vm.paneMode = paneMode
+                        vm.reclaimedBytes = 3_400_000_000
+                        vm.volumeUsedBytes = root.size + 6_000_000_000
+                        return vm
+                    }
+
+                    // 1. Welcome screen
+                    try snap("01-welcome", width: 900, height: 620) {
+                        WelcomeView().environment(ScanViewModel())
+                    }
+
+                    // 2. Scanning progress
+                    try snap("02-scanning", width: 900, height: 620) {
+                        let vm = ScanViewModel()
+                        vm.phase = .scanning
+                        vm.scannedItems = 48213
+                        vm.scannedBytes = 18_400_000_000
+                        vm.scanningPath = fixture.appending(path: "Library/Application Support/SomeApp").path
+                        return ScanningView().environment(vm)
+                    }
+
+                    // 3. Main window — sunburst, Contents pane
+                    try snap("03-main-sunburst-contents", width: 1100, height: 720) {
+                        let vm = makeVM(paneMode: .contents)
+                        vm.select(root.children.first)
+                        return MainView().environment(vm)
+                    }
+
+                    // 4. Main window — treemap
+                    try snap("04-main-treemap", width: 1100, height: 720) {
+                        MainView().environment(makeVM())
+                    }
+
+                    // 5. Files pane (largest files)
+                    try snap("05-main-files-pane", width: 1100, height: 720) {
+                        MainView().environment(makeVM(paneMode: .files))
+                    }
+
+                    // 6. Duplicates pane, populated
+                    try snap("06-main-duplicates", width: 1100, height: 720) {
+                        let vm = makeVM(paneMode: .duplicates)
+                        let files = root.collectFiles(limit: 6, minSize: 1)
+                        if files.count >= 4 {
+                            vm.duplicateGroups = [
+                                DuplicateGroup(size: files[0].size, files: [files[0], files[1]]),
+                                DuplicateGroup(size: files[2].size, files: [files[2], files[3], files[3]]),
+                            ]
+                        }
+                        return MainView().environment(vm)
+                    }
+
+                    // 7. Changes (diff) pane, populated
+                    try snap("07-main-changes", width: 1100, height: 720) {
+                        let vm = makeVM(paneMode: .changes)
+                        let files = root.collectFiles(limit: 6, minSize: 1)
+                        if files.count >= 3 {
+                            vm.diffEntries = [
+                                DiffEntry(path: files[0].url.path, oldSize: files[0].size / 2, newSize: files[0].size, kind: .grown),
+                                DiffEntry(path: files[1].url.path, oldSize: files[1].size * 2, newSize: files[1].size, kind: .shrunk),
+                                DiffEntry(path: files[2].url.path, oldSize: 0, newSize: files[2].size, kind: .added),
+                                DiffEntry(path: "/Users/example/Downloads/old-installer.dmg", oldSize: 850_000_000, newSize: 0, kind: .removed),
+                            ]
+                        }
+                        return MainView().environment(vm)
+                    }
+
+                    // 8. Collector, empty state
+                    try snap("08-collector-empty", width: 300, height: 560) {
+                        CollectorView().environment(makeVM())
+                    }
+
+                    // 9. Collector, populated
+                    try snap("09-collector-populated", width: 300, height: 560) {
+                        let vm = makeVM()
+                        vm.collector = Array(root.collectFiles(limit: 5, minSize: 1))
+                        return CollectorView().environment(vm)
+                    }
+
+                    // 10. Reclaimables sheet
+                    try snap("10-reclaimables", width: 720, height: 520) {
+                        let vm = makeVM()
+                        let categories = ReclaimablesCatalog.standard()
+                        vm.reclaimables = [
+                            ReclaimableResult(category: categories[0], nodes: [root]),
+                            ReclaimableResult(category: categories[2], nodes: [root]),
+                            ReclaimableResult(category: categories[15], nodes: [root]),
+                        ]
+                        vm.snapshots = [
+                            TMSnapshot(name: "com.apple.TimeMachine.2026-07-10-093000.local", deletableDate: "2026-07-10-093000"),
+                            TMSnapshot(name: "com.apple.os.update-ABCDEF", deletableDate: nil),
+                        ]
+                        return ReclaimablesView().environment(vm)
+                    }
+
+                    // 11. Settings
+                    try snap("11-settings", width: 420, height: 220) {
+                        SettingsView()
+                    }
+                }
+                print("ui-audit complete")
+                exit(0)
+            } catch {
+                FileHandle.standardError.write(Data("ui-audit failed: \(error)\n".utf8))
+                exit(1)
+            }
+        }
     }
 }
